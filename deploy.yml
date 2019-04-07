@@ -1,0 +1,57 @@
+---
+- hosts: "localhost"
+  vars:
+    contexto: "{{contexto}}"
+    console: "{{console}}"
+    inventory: "deployment.properties"
+    comando: "{{comando}}"
+  tasks:
+    - name: CARREGA ARQUIVO DE INVENTARIO PARA DEPLOY
+      shell: cat {{inventory}}
+      register: arquivo
+    
+    - name: DEBUG SE JA EXISTE GRUPO PARA O CONTEXTO
+      debug: msg="Cluster-{{contexto}} ja existe"
+      when: arquivo.stdout.find('cluster-{{contexto}}') != -1
+    
+    - name: CASO NAO ENCONTRE E COMANDO = PROVISION, INSERE ENTRADA PARA O GRUPO DO CONTEXTO
+      lineinfile:
+        dest: "{{inventory}}"
+        line: "{{ item.line }}"
+        owner: weblogic
+        group: oracle
+      become: true
+      with_items:
+        - { line: " " }
+        - { line: "[cluster-{{contexto}}]"}
+      when: ( arquivo.stdout.find('cluster-{{contexto}}') == -1 and "{{comando}}" == "provision" )
+      register: inserindo_grupo
+    
+    - name: DEBUG APÓS A INSERCAO DO GRUPO PARA O CONTEXTO
+      debug: msg="Cluster-{{contexto}} ja existe"
+      when: ( inserindo_grupo is defined and "{{comando}}" == "provision" )
+
+    - name: DEBUG SE JA EXISTE ENTRADA PARA A CONSOLE DO CONTEXTO
+      debug: msg="Console ja existe"
+      when: arquivo.stdout.find('{{contexto}} ansible_host={{console}}') != -1
+
+    - name: CASO NAO ENCONTRE E O COMANDO = PROVISION, INSERE A ENTRADA PARA A CONSOLE DO CONTEXTO 
+      lineinfile:
+        dest: "{{inventory}}"
+        insertafter: 'cluster-{{contexto}}]'
+        line: "{{contexto}} ansible_host={{console}}"
+        owner: weblogic
+        group: oracle
+      become: true
+      when: ( arquivo.stdout.find('{{contexto}} ansible_host={{console}}') == -1 and "{{comando}}" == "provision" )
+    
+    - name: CASO ENCONTRE E O COMANDO = DEPROVISION, DELETA A ENTRADA PARA A CONSOLE DO CONTEXTO
+      lineinfile:
+        dest: "{{inventory}}"
+        insertafter: 'cluster-{{contexto}}]'
+        line: "{{contexto}} ansible_host={{console}}"
+        owner: weblogic
+        group: oracle
+        state: absent
+      become: true
+      when: ( arquivo.stdout.find('{{contexto}} ansible_host={{console}}') != -1 and "{{comando}}" == "deprovision" )
